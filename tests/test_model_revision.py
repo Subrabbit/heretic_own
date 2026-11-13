@@ -6,6 +6,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import torch
+
 from heretic.config import Settings
 from heretic.model import Model, get_model_class
 from heretic.utils import create_reproduce_folder, resolve_model_revision
@@ -69,6 +71,64 @@ class ModelRevisionTests(unittest.TestCase):
         self.assertEqual(model.revision_kwargs, {"revision": "b" * 40})
         model.settings.model_commit = None
         self.assertEqual(model.revision_kwargs, {})
+
+    def test_evaluating_same_repository_preserves_loaded_revision(self) -> None:
+        model = Model.__new__(Model)
+        model.settings = Settings.model_construct(
+            model="owner/model", model_commit=COMMIT
+        )
+        model.model = MagicMock()
+        model.model.config.name_or_path = "owner/model"
+        model.needs_reload = False
+        with (
+            patch(
+                "heretic.model.resolve_model_revision", return_value="b" * 40
+            ) as resolve,
+            patch.object(model, "_zero_lora_weights") as reset_weights,
+            patch("heretic.model.get_model_class") as model_class,
+        ):
+            self.assertTrue(model.reset_model("owner/model"))
+            self.assertEqual(model.settings.model_commit, COMMIT)
+            resolve.assert_not_called()
+            reset_weights.assert_called_once_with()
+            model_class.assert_not_called()
+
+    def test_evaluating_another_repository_loads_its_revision(self) -> None:
+        self.check_evaluation_reload("owner/evaluation", "b" * 40)
+
+    def test_evaluating_local_model_clears_the_hub_revision(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            self.check_evaluation_reload(directory, None)
+
+    def check_evaluation_reload(self, target: str, commit: str | None) -> None:
+        model = Model.__new__(Model)
+        model.settings = Settings.model_construct(
+            model="owner/model", model_commit=COMMIT
+        )
+        model.model = MagicMock()
+        model.model.config.name_or_path = "owner/model"
+        model.needs_reload = False
+        model.dtype = torch.float32
+        model.max_memory = None
+        model.trusted_models = {"owner/model"}
+        with (
+            patch(
+                "heretic.model.resolve_model_revision", return_value=commit
+            ) as resolve,
+            patch("heretic.model.get_model_class") as model_class,
+            patch("heretic.model.empty_cache"),
+            patch.object(model, "_get_quantization_config", return_value=None),
+            patch.object(model, "_zero_lora_weights") as reset_weights,
+        ):
+            self.assertFalse(model.reset_model(target))
+            resolve.assert_called_once_with(target, None)
+            model_class.assert_called_once_with(target, commit)
+            load = model_class.return_value.from_pretrained
+            self.assertEqual(load.call_args.args[0], target)
+            self.assertEqual(load.call_args.kwargs.get("revision"), commit)
+            self.assertIsNone(load.call_args.kwargs["trust_remote_code"])
+            self.assertEqual(model.settings.model_commit, commit)
+            reset_weights.assert_not_called()
 
     def test_reproduction_preserves_the_loaded_commit(self) -> None:
         settings = Settings.model_construct(model="owner/model", model_commit=COMMIT)

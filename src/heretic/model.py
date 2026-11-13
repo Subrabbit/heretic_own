@@ -383,11 +383,13 @@ class Model:
             self.needs_reload = True
             return merged_model
 
-    def reset_model(self) -> bool:
+    def reset_model(self, model_name: str | None = None) -> bool:
         """
         Resets the model to a clean state for the next trial or evaluation.
 
         Behavior:
+        - An optional model name selects a different evaluation model. Selecting
+          the current model preserves its pinned revision.
         - Fast path: If the same model is loaded and doesn't need full reload,
           resets LoRA adapter weights to zero (identity transformation).
         - Slow path: If switching models or after merge_and_unload(),
@@ -395,6 +397,11 @@ class Model:
 
         Returns True if the fast path was taken.
         """
+
+        if model_name is not None and model_name != self.settings.model:
+            revision = resolve_model_revision(model_name, None)
+            self.settings.model = model_name
+            self.settings.model_commit = revision
 
         # If a prior model load was interrupted/cancelled mid-process, self.model will be None.
         current_model = None

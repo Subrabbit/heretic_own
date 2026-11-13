@@ -108,7 +108,6 @@ from .utils import (
     load_prompts,
     print,
     print_memory_usage,
-    resolve_model_revision,
     upload_reproduce_folder,
 )
 
@@ -638,9 +637,7 @@ def run():
     if settings.evaluate_model is not None:
         print()
         print(f"Loading model [bold]{settings.evaluate_model}[/]...")
-        settings.model = settings.evaluate_model
-        settings.model_commit = resolve_model_revision(settings.model, None)
-        model.reset_model()
+        model.reset_model(settings.evaluate_model)
         print("* Evaluating...")
         for name, score in evaluator.get_scores():
             print(f"  * [bold]{name}:[/] [green]{score.rich_display}[/]")
