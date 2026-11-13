@@ -89,6 +89,13 @@ for available configuration options. Heretic loads the configuration from
 `config.toml` in the working directory by default, or from the file path in the
 `HERETIC_CONFIG_FILE` environment variable.
 
+Hub models are resolved to an immutable commit before loading. That commit is
+used for the tokenizer, configuration, weights, reloads, and reproduction files.
+Set `model_commit` (or `--model-commit`) to a full commit hash to reuse a reviewed
+revision, including an already cached model when offline. An unpinned Hub model
+requires a successful metadata lookup; local model directories do not. Pinning
+does not replace reviewing a model's code before granting remote-code trust.
+
 > [!IMPORTANT]
 >
 > Configuration files made for Heretic 1.x are **not** compatible with Heretic 2.x!

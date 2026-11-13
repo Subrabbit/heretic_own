@@ -6,10 +6,15 @@ on:
   pull_request:
     branches: [master]
 
+permissions:
+  contents: read
+
 jobs:
   checks:
     name: Check and build (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    env:
+      UV_LOCKED: "true"
     strategy:
       fail-fast: false
       matrix:
@@ -17,11 +22,14 @@ jobs:
 
     steps:
       - name: Check out code
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
         with:
+          version: "0.13.8"
           enable-cache: true
           cache-dependency-glob: "uv.lock"
 
@@ -29,23 +37,23 @@ jobs:
         run: uv python install ${{ matrix.python-version }}
 
       - name: Install dependencies
-        run: uv sync --all-extras --dev
+        run: uv sync --locked --all-extras --dev
 
       - name: Check formatting
-        run: uv run ruff format --check .
+        run: uv run --no-sync ruff format --check .
 
       - name: Lint and check import sorting
-        run: uv run ruff check --output-format=github --extend-select I .
+        run: uv run --no-sync ruff check --output-format=github --extend-select I .
 
       - name: Check typing
-        run: uv run ty check --output-format=github --error-on-warning .
+        run: uv run --no-sync ty check --output-format=github --error-on-warning .
 
       - name: Run tests
         env:
           PYTHONUNBUFFERED: "1"
         run: |
-          uv run python -m unittest discover -s tests -p 'test_*.py'
-          uv run tests/run_tests.py 2>&1
+          uv run --no-sync python -m unittest discover -s tests -p 'test_*.py'
+          uv run --no-sync tests/run_tests.py 2>&1
 
       - name: Build package
         run: uv build

@@ -108,6 +108,7 @@ from .utils import (
     load_prompts,
     print,
     print_memory_usage,
+    resolve_model_revision,
     upload_reproduce_folder,
 )
 
@@ -143,7 +144,9 @@ def obtain_export_strategy(
             # These are expected and harmless since we're only inspecting model structure, not running inference.
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
-                meta_model = get_model_class(settings.model).from_pretrained(
+                meta_model = get_model_class(
+                    settings.model, settings.model_commit
+                ).from_pretrained(
                     settings.model,
                     device_map="meta",
                     torch_dtype=torch.bfloat16,
@@ -636,6 +639,7 @@ def run():
         print()
         print(f"Loading model [bold]{settings.evaluate_model}[/]...")
         settings.model = settings.evaluate_model
+        settings.model_commit = resolve_model_revision(settings.model, None)
         model.reset_model()
         print("* Evaluating...")
         for name, score in evaluator.get_scores():

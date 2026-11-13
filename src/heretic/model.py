@@ -30,13 +30,14 @@ from transformers.generation import (
 
 from .config import QuantizationMethod, Settings
 from .system import empty_cache
-from .utils import Prompt, batchify, format_exception, print
+from .utils import Prompt, batchify, format_exception, print, resolve_model_revision
 
 
 def get_model_class(
     model: str,
+    revision: str | None = None,
 ) -> type[AutoModelForImageTextToText] | type[AutoModelForCausalLM]:
-    configs = PretrainedConfig.get_config_dict(model)
+    configs = PretrainedConfig.get_config_dict(model, revision=revision)
 
     if any(("vision_config" in config) for config in configs):
         return AutoModelForImageTextToText
@@ -118,13 +119,19 @@ class Model:
     # Whether the model's chat template accepts a system role (see __init__).
     supports_system_role: bool
 
+    @property
+    def revision_kwargs(self) -> dict[str, str]:
+        if self.settings.model_commit is None:
+            return {}
+        return {"revision": self.settings.model_commit}
+
     def __init__(self, settings: Settings):
         self.settings = settings
         self.needs_reload = False
 
-        self.revision_kwargs = {}
-        if settings.model_commit is not None:
-            self.revision_kwargs["revision"] = settings.model_commit
+        settings.model_commit = resolve_model_revision(
+            settings.model, settings.model_commit
+        )
 
         print()
         print(f"Loading model [bold]{settings.model}[/]...")
@@ -141,7 +148,10 @@ class Model:
 
         # Multimodal models have a processor we'll want to save.
         self.processor = None
-        if get_model_class(settings.model) == AutoModelForImageTextToText:
+        if (
+            get_model_class(settings.model, settings.model_commit)
+            == AutoModelForImageTextToText
+        ):
             self.processor = AutoProcessor.from_pretrained(
                 settings.model,
                 **self.revision_kwargs,
@@ -182,7 +192,9 @@ class Model:
                 if quantization_config is not None:
                     extra_kwargs["quantization_config"] = quantization_config
 
-                self.model = get_model_class(settings.model).from_pretrained(
+                self.model = get_model_class(
+                    settings.model, settings.model_commit
+                ).from_pretrained(
                     settings.model,
                     dtype=dtype,
                     device_map=settings.device_map,
@@ -337,7 +349,9 @@ class Model:
 
             # Load base model in full precision on CPU to avoid VRAM issues
             print("* Loading base model on CPU (this may take a while)...")
-            base_model = get_model_class(self.settings.model).from_pretrained(
+            base_model = get_model_class(
+                self.settings.model, self.settings.model_commit
+            ).from_pretrained(
                 self.settings.model,
                 torch_dtype=self.model.dtype,
                 device_map="cpu",
@@ -407,7 +421,9 @@ class Model:
         if quantization_config is not None:
             extra_kwargs["quantization_config"] = quantization_config
 
-        self.model = get_model_class(self.settings.model).from_pretrained(
+        self.model = get_model_class(
+            self.settings.model, self.settings.model_commit
+        ).from_pretrained(
             self.settings.model,
             dtype=self.dtype,
             device_map=self.settings.device_map,
