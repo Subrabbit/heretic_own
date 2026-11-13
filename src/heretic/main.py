@@ -143,7 +143,9 @@ def obtain_export_strategy(
             # These are expected and harmless since we're only inspecting model structure, not running inference.
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
-                meta_model = get_model_class(settings.model).from_pretrained(
+                meta_model = get_model_class(
+                    settings.model, settings.model_commit
+                ).from_pretrained(
                     settings.model,
                     device_map="meta",
                     torch_dtype=torch.bfloat16,
@@ -635,8 +637,7 @@ def run():
     if settings.evaluate_model is not None:
         print()
         print(f"Loading model [bold]{settings.evaluate_model}[/]...")
-        settings.model = settings.evaluate_model
-        model.reset_model()
+        model.reset_model(settings.evaluate_model)
         print("* Evaluating...")
         for name, score in evaluator.get_scores():
             print(f"  * [bold]{name}:[/] [green]{score.rich_display}[/]")

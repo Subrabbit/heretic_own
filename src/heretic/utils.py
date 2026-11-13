@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import platform
+import re
 import tempfile
 import traceback
 from dataclasses import dataclass
@@ -144,6 +145,19 @@ def is_hf_path(path: str) -> bool:
 
     validate_repo_id(path)
     return True
+
+
+def resolve_model_revision(model: str, revision: str | None) -> str | None:
+    """Resolve Hub references before loading; local models need no Hub lookup."""
+    if not is_hf_path(model):
+        return None
+    if revision is not None and re.fullmatch(r"[0-9a-fA-F]{40}", revision):
+        return revision
+
+    commit = huggingface_hub.model_info(model, revision=revision).sha
+    if commit is None or not re.fullmatch(r"[0-9a-fA-F]{40}", commit):
+        raise ValueError(f"Could not resolve an immutable revision for model {model}")
+    return commit
 
 
 @dataclass
@@ -687,13 +701,16 @@ def create_reproduce_folder(
     uploaded_model_hashes: dict[str, str],
     include_system_information: bool,
 ):
+    # Preserve the revision actually loaded, even if the Hub branch has moved.
+    if settings.model_commit is None:
+        raise ValueError(
+            "The base model must be pinned before creating reproduction files"
+        )
+
     reproduce_dir = path / "reproduce"
     reproduce_dir.mkdir(parents=True, exist_ok=True)
 
     checkpoint_filename = Path(checkpoint_path).name
-
-    # Fetch commit hash for the base model.
-    settings.model_commit = huggingface_hub.model_info(settings.model).sha
 
     # Strip microseconds and timezone for a clean format.
     timestamp = (
